@@ -1,0 +1,216 @@
+{
+  "name": "Checkpoint 1 - Agente Base | Calificación de Leads (Triunfo Seguros)",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "options": {
+          "subtitle": "Contame qué seguro estás buscando",
+          "title": "Triunfo Seguros - Asistente de Calificación",
+          "responseMode": "lastNode"
+        }
+      },
+      "id": "15ca35e4-1516-49c6-a1f3-793bec5fef1c",
+      "name": "Chat Trigger (estímulo del usuario)",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        432
+      ],
+      "webhookId": "f7c1a2e0-5b44-4d6a-9a1e-3c8b7d210af5"
+    },
+    {
+      "parameters": {
+        "model": "claude-sonnet-5",
+        "options": {
+          "maxTokensToSample": 1024,
+          "temperature": 0
+        }
+      },
+      "id": "84790845-e0ba-4511-bf98-6b0946d5a947",
+      "name": "Anthropic Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        640
+      ],
+      "credentials": {
+        "anthropicApi": {
+          "id": "jipG7jRnnUkxJBnD",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Observabilidad: arma el reporte de auditoría del razonamiento del agente.\nconst item = $input.first().json;\nconst pasos = Array.isArray(item.intermediateSteps) ? item.intermediateSteps : [];\n\nconst traza = pasos.length\n  ? pasos.map((p, i) => {\n      const accion = p.action || {};\n      const herramienta = accion.tool || 'sin herramienta';\n      const entrada = JSON.stringify(accion.toolInput || {});\n      const obs = p.observation;\n      const salida = typeof obs === 'string' ? obs : JSON.stringify(obs || {});\n      return (i + 1) + '. Herramienta: ' + herramienta + '\\n   Entrada: ' + entrada + '\\n   Resultado: ' + salida;\n    }).join('\\n\\n')\n  : 'El agente respondió sin activar herramientas en esta ejecución (la ramificación probabilística no se abrió).';\n\nconst reporte = [\n  'REPORTE DE OBSERVABILIDAD - CHECKPOINT 1',\n  '=========================================',\n  'Workflow: ' + $workflow.name,\n  'Ejecución: ' + $execution.id,\n  'Fecha: ' + new Date().toISOString(),\n  'Iteraciones con herramienta: ' + pasos.length,\n  '',\n  '--- TRAZA DEL RAZONAMIENTO (Execution Log) ---',\n  traza,\n  '',\n  '--- RESPUESTA FINAL AL CLIENTE ---',\n  item.output || '(sin salida)'\n].join('\\n');\n\nreturn [{\n  json: {\n    ejecucion_id: $execution.id,\n    workflow: $workflow.name,\n    fecha: new Date().toISOString(),\n    iteraciones_con_herramienta: pasos.length,\n    herramientas_usadas: pasos.map(p => (p.action || {}).tool).filter(Boolean),\n    respuesta_final: item.output || '',\n    reporte: reporte\n  }\n}];"
+      },
+      "id": "5171ebd1-d367-4ddd-b687-f1f803096e21",
+      "name": "Formatear log de observabilidad",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "subject": "=[Observabilidad] Checkpoint 1 · Ejecución {{ $json.ejecucion_id }} · {{ $json.iteraciones_con_herramienta }} tool call(s)",
+        "emailType": "text",
+        "message": "={{ $json.reporte }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "e03ea899-7718-4219-8e52-efedb16035b5",
+      "name": "Reporte de supervisión humana (Gmail)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        928,
+        432
+      ],
+      "webhookId": "1855a838-aac9-4ed4-8779-fc8b42b5c3cd",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "pHdqa7Y7LIjKLHGj",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## Checkpoint 1 · Agente Base\n\n**Arquitectura:** Trigger → AI Agent (Tools Agent) → Log de observabilidad.\n\n- **Chat Model** y **Tool** cuelgan lateralmente del agente (`ai_languageModel`, `ai_tool`): capacidades que el agente usa de forma probabilística.\n- El nodo **Gmail final** cuelga en `main`: automatización lineal determinista, corre siempre.\n- **Guardrail:** maxIterations = 8 (rango exigido 5-10).\n\n*Base del proyecto integrador: M3 reemplaza la Simple Memory por persistencia en Airtable con Session_ID, M4 suma integraciones OAuth2, M5 RAG.*",
+        "height": 320,
+        "width": 420,
+        "color": 4
+      },
+      "id": "8fb143e7-8537-4b5d-ade2-28b8262eb2be",
+      "name": "Nota de arquitectura",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Envía por correo el aviso de derivación a Mariela Ayala. Es la única vía\nhabilitada para pasar un caso a una persona real.\n\nCUÁNDO ACTIVARLA (decidilo solo, apenas se cumple la condición, sin pedirle\npermiso al cliente):\n1. El cliente menciona un bien concreto a asegurar: un vehículo con marca,\n   modelo o año; una vivienda con su tipo; un comercio con su rubro. Es el caso\n   más frecuente y alcanza por sí solo, aunque no haya dejado ningún contacto.\n2. Pide una cotización de forma explícita.\n3. Pide hablar con una persona, un asesor, un vendedor o \"alguien de la oficina\".\n4. Consulta por un ramo no habilitado, o por un siniestro, una cobranza, un\n   endoso o una renovación.\n5. Detectás enojo, reclamo o urgencia.\n6. ACTUALIZACIÓN: en un turno posterior a la derivación, el cliente deja un\n   teléfono o email que antes no tenías.\n\nCUÁNDO NO ACTIVARLA: saludos sin contenido, preguntas sobre qué es un seguro o\ncómo funciona un ramo, consultas sin bien concreto, o cuando ya derivaste este\ncaso y no hay contacto nuevo que informar.\n\nUNA SOLA LLAMADA POR TURNO. Nunca generes dos activaciones en la misma\nrespuesta, ni con distinta redacción.\n\nNO ESPERES A TENER TODOS LOS DATOS. Un aviso con el ramo y el modelo del auto le\nsirve al asesor; un lead que se fue del chat porque le pediste tres datos antes\nde atenderlo, no.\n\nQUÉ MANDAR\nAsunto: ramo y bien a asegurar. Ejemplo: Lead Automotor - VW Gol Trend 2013.\nEn una ACTUALIZACIÓN, el asunto arranca con esa palabra.\nCuerpo: texto plano, un campo por línea, en este orden exacto:\nNombre / Contacto / Localidad / Ramo / Bien a asegurar / Motivo de la\nderivación / Resumen del pedido.\nEn \"Resumen del pedido\" va lo que escribió el cliente, textual.\nLos datos que no surgieron se escriben \"no informado\". Nunca los completes por\ntu cuenta ni agregues campos que no estén en esta lista.\n\nLa herramienta devuelve un JSON con el id del correo. Ese id confirma el envío:\nno reintentes ni vuelvas a activarla esperando otra confirmación.",
+        "subject": "={{ $fromAI('asunto', 'Ramo y bien a asegurar. Ejemplo: Lead Automotor - VW Gol Trend 2013. Si es una actualizacion, arranca con la palabra ACTUALIZACION', 'string') }}",
+        "emailType": "text",
+        "message": "={{ $fromAI('cuerpo', 'Texto plano, un campo por linea, en este orden exacto: Nombre, Contacto, Localidad, Ramo, Bien a asegurar, Motivo de la derivacion, Resumen del pedido. Sin campos adicionales. Los datos que no surgieron van como no informado', 'string') }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "d405ae24-8507-400f-89a3-6ab86da87438",
+      "name": "notificar_asesor_humano",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.1,
+      "position": [
+        608,
+        640
+      ],
+      "webhookId": "8f0235d0-8f4b-4ec3-af33-24b9e873aafb",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "pHdqa7Y7LIjKLHGj",
+          "name": "Gmail OAuth2 API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "# ROL\nSos el asistente de primer contacto de Mariela Ayala, productora asesora de\nseguros en Argentina. Recibís consultas desordenadas de gente que quiere\nasegurar algo y las convertís en un aviso claro para que Mariela llame al\ncliente.\n\n# REGLA CRÍTICA DE EJECUCIÓN\nEmitís como máximo UNA llamada a notificar_asesor_humano por turno. Nunca dos\nen la misma respuesta, ni siquiera con distinta redacción o distinto nivel de\ndetalle. Antes de generar una llamada a la herramienta, verificá que no estés\ngenerando otra en el mismo turno. Si dudás, mandá una sola.\n\n# QUÉ HACÉS\nLa mayoría escribe con lo mínimo: \"cuánto sale asegurar un Gol Trend 2013\".\nEso ya es un lead completo. Tu trabajo es derivarlo rápido, no llenar un\nformulario antes de pasarlo.\n\n1. Identificás el ramo. Si no lo menciona, tu primera pregunta es cuál seguro\n   necesita. Nunca arranques pidiendo el contacto.\n2. Detectás el bien a asegurar: marca, modelo o año del vehículo / tipo de\n   vivienda / rubro del comercio / edad o capital en Vida.\n3. Derivás apenas tenés un bien concreto o un pedido explícito de cotización.\n4. Recién ahí pedís teléfono o email.\n\n# CUÁNDO DERIVÁS\nLlamás a notificar_asesor_humano cuando pasa alguna de estas cosas:\n- El cliente menciona un bien concreto a asegurar.\n- Pide una cotización de forma explícita.\n- Pide hablar con una persona.\n- Consulta por un ramo no habilitado o por un siniestro en curso.\n- Detectás enojo, reclamo o urgencia.\n\nUna sola derivación por conversación. La única excepción: si en un turno\nPOSTERIOR el cliente deja un teléfono o email que antes no tenías, podés\nllamarla una segunda vez con el asunto empezando en \"ACTUALIZACIÓN\" y el\nresumen completo ya con el contacto. Esa segunda llamada nunca ocurre en el\nmismo turno que la primera.\nTu primera respuesta después de derivar siempre tiene dos partes: primero le\nconfirmás al cliente que su consulta quedó en manos de un asesor, después le\npedís teléfono o email. Nunca pidas el contacto sin confirmar antes la\nderivación.\n\n# CÓMO LEÉS EL RESULTADO\nLa herramienta devuelve un JSON con \"id\", \"threadId\" y \"labelIds\". Si hay un\n\"id\", el correo salió. Ese id es la confirmación: no existe ningún otro formato\nde respuesta, no vas a recibir un texto que diga \"enviado\".\nCon el id en mano, la derivación está cerrada. No reintentás, no verificás, no\nvolvés a llamar. Y nunca le decís al cliente que hubo un error de envío.\n\n# LÍMITES\n- No cotizás. Nada de precios, primas, sumas aseguradas, franquicias ni\n  descuentos, aunque insistan.\n- No confirmás coberturas ni exclusiones. Eso lo define Mariela con la póliza\n  a la vista.\n- No inventás ramos, productos ni compañías. Si la consulta queda fuera de\n  Automotor, Hogar, Vida, Accidentes Personales, Comercio o ART, lo decís.\n- No pedís DNI, CUIT, datos de tarjeta ni números de cuenta.\n- No prometés plazos. El único compromiso válido: un asesor se comunica a la\n  brevedad.\n- Un dato que no surgió de la conversación va como \"no informado\". No lo\n  completás por tu cuenta.\n\n# ESTILO\nEspañol rioplatense, voseo, tono profesional y cercano. Mensajes cortos, sin\nrelleno. Una pregunta por vez, nunca más de tres en toda la conversación.\nTexto plano, sin asteriscos ni markdown.\nQueda excluido todo giro de lenguaje inclusivo (terminaciones en -e, -x o @):\nescribí \"los clientes\", \"el asesor\", nunca \"les clientes\" ni \"asesor@\".",
+          "maxIterations": 8,
+          "returnIntermediateSteps": true
+        }
+      },
+      "id": "67ed8108-b60c-47a6-be31-f93c4913c2ec",
+      "name": "Agente IA",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        320,
+        432
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Chat Trigger (estímulo del usuario)": {
+      "main": [
+        [
+          {
+            "node": "Agente IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agente IA",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear log de observabilidad": {
+      "main": [
+        [
+          {
+            "node": "Reporte de supervisión humana (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "notificar_asesor_humano": {
+      "ai_tool": [
+        [
+          {
+            "node": "Agente IA",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agente IA": {
+      "main": [
+        [
+          {
+            "node": "Formatear log de observabilidad",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "5088fa28-8e62-4d9d-befe-815d2cc6069b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9ea9159f3525e25d49e697056d22ff72a89f1909f3f2d1f3d5cd6f86f93bf73c"
+  },
+  "nodeGroups": [],
+  "id": "NH4Phymm2Uv0j0Hr",
+  "tags": []
+}
